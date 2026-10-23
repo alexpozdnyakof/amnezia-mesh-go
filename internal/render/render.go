@@ -31,6 +31,10 @@ var obfKeys = []string{
 	"RandomTrailers", "DisableCookies",
 }
 
+// ObfKeys returns the AmneziaWG obfuscation parameter names in render
+// order. Shared with adopt (conf key → OBF_*) — single source of truth.
+func ObfKeys() []string { return obfKeys }
+
 // rawGet mirrors Python's env.get(key, def): the default applies only when
 // the key is absent, not when it holds an empty string.
 func rawGet(env map[string]string, key, def string) string {
