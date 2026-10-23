@@ -37,17 +37,19 @@ changelog:
       - "^test:"
       - "^ci:"
 
-brews:
+homebrew_casks:
   - name: awg-mesh
     repository:
       owner: alexpozdnyakof
       name: homebrew-tap
       token: "{{ .Env.GITHUB_TOKEN }}"
-    directory: Formula
+    directory: Casks
     homepage: "https://github.com/alexpozdnyakof/amnezia-mesh-go"
     description: "Self-hosted WireGuard mesh with AmneziaWG obfuscation, MagicDNS and exit/mesh profiles (Go CLI)"
     license: "MIT"
-    install: |
-      bin.install "awg-mesh"
-    test: |
-      system "#{bin}/awg-mesh", "--version"
+    # The binary is not signed/notarized — clear the quarantine attribute so
+    # Gatekeeper does not block it after brew installs the cask.
+    hooks:
+      post:
+        install_steps: |
+          run "xattr", args: ["-dr", "com.apple.quarantine", "{{ .AppDir }}/awg-mesh"]
