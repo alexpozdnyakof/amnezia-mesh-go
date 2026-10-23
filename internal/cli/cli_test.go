@@ -188,6 +188,65 @@ func TestPeerRenameAndRevokeFlow(t *testing.T) {
 	}
 }
 
+func TestCmdAdoptInspect(t *testing.T) {
+	rootDir := t.TempDir()
+	t.Setenv("AWG_MESH_ROOT", rootDir)
+	var stdout, stderr bytes.Buffer
+	c, rec := stubbedCli(t, &stdout, &stderr)
+
+	code := c.Run([]string{"--json", "adopt", "--inspect", "--config", goldenConf,
+		"--image", "img:latest"})
+	if code != 0 {
+		t.Fatalf("code = %d, stderr: %s", code, stderr.String())
+	}
+	var out struct {
+		OK      bool `json:"ok"`
+		Inspect struct {
+			Source            string `json:"source"`
+			Image             string `json:"image"`
+			ServerPub         string `json:"server_pub"`
+			Subnet            string `json:"subnet"`
+			MTU               string `json:"mtu"`
+			ListenPort        string `json:"listen_port"`
+			ServerKeepalive   string `json:"server_keepalive"`
+			ObfuscationParams int    `json:"obfuscation_params"`
+			Peers             []struct {
+				Name    string `json:"name"`
+				IP      string `json:"ip"`
+				Pub     string `json:"pub"`
+				Created string `json:"created"`
+			} `json:"peers"`
+			Warnings []string `json:"warnings"`
+		} `json:"inspect"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("stdout not JSON: %v\n%s", err, stdout.String())
+	}
+	if !out.OK {
+		t.Fatalf("ok = false: %s", stdout.String())
+	}
+	insp := out.Inspect
+	if insp.Subnet != "100.64.0.0/24" || insp.MTU != "1280" ||
+		insp.ListenPort != "41480" || insp.ServerKeepalive != "25" ||
+		insp.ObfuscationParams != 20 || len(insp.Peers) != 3 ||
+		len(insp.Warnings) != 0 || insp.ServerPub == "" {
+		t.Fatalf("unexpected inspect summary: %+v", insp)
+	}
+	for _, p := range insp.Peers {
+		if p.Pub == "" || p.Name == "" || p.IP == "" {
+			t.Fatalf("peer missing fields: %+v", p)
+		}
+	}
+	// Read-only: nothing may be written, and no real docker calls are needed
+	// (pubkey derivation is the cli seam).
+	if _, err := os.Stat(filepath.Join(rootDir, "config")); !os.IsNotExist(err) {
+		t.Fatal("inspect must not create config/")
+	}
+	if len(rec.docker) != 0 {
+		t.Fatalf("inspect must not call docker: %v", rec.docker)
+	}
+}
+
 func TestDoctorJSONExitCode(t *testing.T) {
 	rootDir := t.TempDir()
 	t.Setenv("AWG_MESH_ROOT", rootDir)

@@ -1,0 +1,53 @@
+version: 2
+
+project_name: awg-mesh
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/awg-mesh
+    binary: awg-mesh
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/alexpozdnyakof/amnezia-mesh-go/internal/cli.Version={{.Version}}
+    targets:
+      - darwin_arm64
+      - darwin_amd64
+      - linux_arm64
+      - linux_amd64
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+
+brews:
+  - name: awg-mesh
+    repository:
+      owner: alexpozdnyakof
+      name: homebrew-tap
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/alexpozdnyakof/amnezia-mesh-go"
+    description: "Self-hosted WireGuard mesh with AmneziaWG obfuscation, MagicDNS and exit/mesh profiles (Go CLI)"
+    license: "MIT"
+    install: |
+      bin.install "awg-mesh"
+    test: |
+      system "#{bin}/awg-mesh", "--version"

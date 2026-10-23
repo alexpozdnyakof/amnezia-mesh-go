@@ -29,8 +29,8 @@ import (
 	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/render"
 )
 
-// Version mirrors awg_mesh.__version__.
-const Version = "0.2.0"
+// Version mirrors awg_mesh.__version__. Overridden via -ldflags by goreleaser.
+var Version = "0.2.0"
 
 // errExit signals that a failure message was already printed.
 var errExit = errors.New("cli: exit")
@@ -337,7 +337,7 @@ func (c *Cli) cmdInit(args []string) (int, error) {
 // --- adopt ------------------------------------------------------------------
 
 func (c *Cli) cmdAdopt(args []string) (int, error) {
-	flags, pos, err := parseArgs(args, map[string]bool{"rdp-reject": true})
+	flags, pos, err := parseArgs(args, map[string]bool{"rdp-reject": true, "inspect": true})
 	if err != nil || len(pos) != 0 {
 		if err == nil {
 			err = fmt.Errorf("unexpected positional arguments: %s", strings.Join(pos, " "))
@@ -348,14 +348,16 @@ func (c *Cli) cmdAdopt(args []string) (int, error) {
 	if (container == "") == (config == "") {
 		return 2, c.argErr("adopt", fmt.Errorf("one of --container or --config is required"))
 	}
-	host := flags["host"]
-	if host == "" {
-		return 2, c.argErr("adopt", fmt.Errorf("--host is required"))
-	}
+	inspect := flags["inspect"] == "true"
 	r := root()
 	envFile := filepath.Join(r, "config", "server.env")
-	if fileExists(envFile) {
-		return 0, c.failf("already initialized: %s exists (delete config/ to start over)", envFile)
+	if !inspect {
+		if fileExists(envFile) {
+			return 0, c.failf("already initialized: %s exists (delete config/ to start over)", envFile)
+		}
+		if flags["host"] == "" {
+			return 0, c.failf("--host is required (public IP or domain of this server)")
+		}
 	}
 
 	var confText, source string
@@ -392,27 +394,28 @@ func (c *Cli) cmdAdopt(args []string) (int, error) {
 		return 0, err
 	}
 
-	nObf := 0
-	for k := range parsed.Env {
-		if strings.HasPrefix(k, "OBF_") {
-			nObf++
-		}
-	}
-	c.say("[Interface]: server key, %d obfuscation parameters, MTU %s, ListenPort %s",
-		nObf, defaultStr(parsed.Env["MTU"], "1280"), defaultStr(parsed.Env["LISTEN_PORT"], "41480"))
-	c.say("[Peer] x%d:", len(parsed.Peers))
-	for _, p := range parsed.Peers {
-		c.say("  %-20s %s", p.Name, p.IP)
-	}
-	for _, w := range parsed.Warnings {
-		c.say("warning: %s", w)
-	}
-
 	c.say("deriving server public key ...")
 	serverPub, err := c.KeygenPubFromPriv(image, parsed.Env["SERVER_PRIV"])
 	if err != nil {
 		return 0, c.failf("%v", err)
 	}
+
+	if inspect {
+		if c.JSON {
+			o := ojson.New()
+			o.Set("ok", true)
+			o.Set("inspect", inspectSummary(parsed, image, serverPub, source))
+			var buf bytes.Buffer
+			o.MarshalSpaced(&buf)
+			fmt.Fprintln(c.Stdout, buf.String())
+		} else {
+			c.sayAdoptPlan(parsed)
+		}
+		return 0, nil
+	}
+
+	c.sayAdoptPlan(parsed)
+	host := flags["host"]
 	port, err := strconv.Atoi(defaultStr(flags["port"], "443"))
 	if err != nil {
 		return 0, c.failf("invalid --port: %s", flags["port"])
@@ -513,6 +516,60 @@ func (c *Cli) cmdAdopt(args []string) (int, error) {
 }
 
 // --- peer -------------------------------------------------------------------
+
+// inspectSummary is the machine-readable pre-adopt snapshot for
+// `adopt --inspect`. Key order matches the Python dict.
+func inspectSummary(parsed *adopt.ParsedConf, image, serverPub, source string) *ojson.Obj {
+	peers := make([]any, 0, len(parsed.Peers))
+	for _, p := range parsed.Peers {
+		o := ojson.New()
+		o.Set("name", p.Name)
+		o.Set("ip", p.IP)
+		o.Set("pub", p.Pub)
+		o.Set("created", p.Created)
+		peers = append(peers, o)
+	}
+	warnings := make([]any, 0, len(parsed.Warnings))
+	for _, w := range parsed.Warnings {
+		warnings = append(warnings, w)
+	}
+	o := ojson.New()
+	o.Set("source", source)
+	o.Set("image", image)
+	o.Set("server_pub", serverPub)
+	o.Set("subnet", parsed.Subnet)
+	o.Set("mtu", parsed.Env["MTU"]) // absent → "", like Python's .get(k, "")
+	o.Set("listen_port", parsed.Env["LISTEN_PORT"])
+	o.Set("server_keepalive", parsed.Keepalive)
+	o.Set("obfuscation_params", obfCount(parsed))
+	o.Set("peers", peers)
+	o.Set("warnings", warnings)
+	return o
+}
+
+func obfCount(parsed *adopt.ParsedConf) int {
+	n := 0
+	for k := range parsed.Env {
+		if strings.HasPrefix(k, "OBF_") {
+			n++
+		}
+	}
+	return n
+}
+
+// sayAdoptPlan prints the human-mode adopt plan (progress notes, stderr).
+func (c *Cli) sayAdoptPlan(parsed *adopt.ParsedConf) {
+	c.say("[Interface]: server key, %d obfuscation parameters, MTU %s, ListenPort %s",
+		obfCount(parsed), defaultStr(parsed.Env["MTU"], "1280"),
+		defaultStr(parsed.Env["LISTEN_PORT"], "41480"))
+	c.say("[Peer] x%d:", len(parsed.Peers))
+	for _, p := range parsed.Peers {
+		c.say("  %-20s %s", p.Name, p.IP)
+	}
+	for _, w := range parsed.Warnings {
+		c.say("warning: %s", w)
+	}
+}
 
 func (c *Cli) cmdPeer(args []string) (int, error) {
 	if len(args) == 0 {
@@ -648,6 +705,7 @@ func (c *Cli) cmdPeerList(args []string) (int, error) {
 		o := ojson.New()
 		o.Set("name", p.Name)
 		o.Set("ip", p.IP)
+		o.Set("pub", p.Pub)
 		o.Set("created", p.Created)
 		peerObjs = append(peerObjs, o)
 	}
