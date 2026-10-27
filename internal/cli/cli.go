@@ -27,6 +27,7 @@ import (
 	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/peers"
 	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/profile"
 	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/render"
+	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/skill"
 )
 
 // Version mirrors awg_mesh.__version__. Overridden via -ldflags by goreleaser.
@@ -145,6 +146,8 @@ func (c *Cli) dispatch(argv []string) (int, error) {
 		return c.cmdDoctor(rest)
 	case "monitoring":
 		return c.cmdMonitoring(rest)
+	case "skill":
+		return c.cmdSkill(rest)
 	default:
 		fmt.Fprintf(c.Stderr, "awg-mesh: error: unknown command: %s\n", cmd)
 		usage(c.Stderr)
@@ -154,7 +157,7 @@ func (c *Cli) dispatch(argv []string) (int, error) {
 
 func usage(w io.Writer) {
 	fmt.Fprintln(w, "usage: awg-mesh [--json] <command> [args]")
-	fmt.Fprintln(w, "commands: init, adopt, peer add|list|revoke|rename, doctor, monitoring install|uninstall")
+	fmt.Fprintln(w, "commands: init, adopt, peer add|list|revoke|rename, doctor, monitoring install|uninstall, skill [--install]")
 }
 
 // say is a progress note, human mode only (stdout stays machine-readable).
@@ -885,6 +888,29 @@ func (c *Cli) cmdMonitoring(args []string) (int, error) {
 	}
 	c.say("monitoring removed")
 	c.ok("installed", false)
+	return 0, nil
+}
+
+// cmdSkill prints the bundled agent skill, or installs it into
+// ~/.agents/skills/ so coding agents pick it up.
+func (c *Cli) cmdSkill(args []string) (int, error) {
+	flags, pos, err := parseArgs(args, map[string]bool{"install": true})
+	if err != nil || len(pos) != 0 {
+		if err == nil {
+			err = fmt.Errorf("skill takes no positional arguments")
+		}
+		return 2, c.argErr("skill", err)
+	}
+	if flags["install"] == "true" {
+		path, err := skill.Install()
+		if err != nil {
+			return 0, c.failf("%v", err)
+		}
+		c.say("skill installed: %s", path)
+		c.ok("skill", path)
+		return 0, nil
+	}
+	fmt.Fprint(c.Stdout, skill.Load())
 	return 0, nil
 }
 

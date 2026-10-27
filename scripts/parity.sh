@@ -185,6 +185,11 @@ step "$PYADOPT" "$GOADOPT" "adopt --config" \
 step "$PYADOPT" "$GOADOPT" "adopt: doctor" doctor --json
 step "$PYADOPT" "$GOADOPT" "adopt: list"   peer list --json
 
+# --- flow 3: agent skill -----------------------------------------------------
+# `skill` prints the bundled SKILL.md — both implementations must ship the
+# same bytes.
+step "$PYROOT" "$GROOT" "skill" skill
+
 echo "------------------------------------------------------------"
 if [ "$fails" -eq 0 ]; then
   echo "PARITY OK: $step_no steps, zero diffs"

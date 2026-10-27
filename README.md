@@ -41,6 +41,8 @@ awg-mesh peer add laptop     # → vpn:// profiles + .conf for the Amnezia app
 awg-mesh peer list --json
 awg-mesh doctor              # post-install self-checks
 awg-mesh monitoring install  # optional: cron stats + watchdog
+awg-mesh skill --install     # optional: install the bundled agent skill
+                             # (~/.agents/skills/, for coding assistants)
 ```
 
 Every command supports `--json` (single JSON object on stdout, non-zero exit +
