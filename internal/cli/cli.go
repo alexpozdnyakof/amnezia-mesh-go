@@ -661,7 +661,7 @@ func (c *Cli) cmdPeerAdd(args []string) (int, error) {
 	if _, err := render.RenderAll(r); err != nil {
 		return 0, err
 	}
-	if err := c.applyConf(r, env); err != nil {
+	if err := c.applyAdd(r, env, peers.Peer{Name: name, IP: ip, Pub: pub}); err != nil {
 		return 0, err
 	}
 
@@ -749,7 +749,7 @@ func (c *Cli) cmdPeerRename(args []string) (int, error) {
 	if _, err := render.RenderAll(r); err != nil {
 		return 0, err
 	}
-	if err := c.applyConf(r, env); err != nil {
+	if err := c.applyRename(r, env); err != nil {
 		return 0, err
 	}
 	c.say("peer '%s' renamed to '%s'", oldName, newName)
@@ -791,7 +791,7 @@ func (c *Cli) cmdPeerRevoke(args []string) (int, error) {
 	if _, err := render.RenderAll(r); err != nil {
 		return 0, err
 	}
-	if err := c.applyConf(r, env); err != nil {
+	if err := c.applyRevoke(r, env); err != nil {
 		return 0, err
 	}
 	matches, _ := filepath.Glob(filepath.Join(r, "config", "peers", name+"-*.vpn"))
@@ -905,49 +905,43 @@ func runCmd(name string, args ...string) (string, string, int) {
 
 // --- apply ------------------------------------------------------------------
 
-// applyConf pushes awg0.conf into the running container and reloads dns.
-func (c *Cli) applyConf(r string, env map[string]string) error {
-	data, err := os.ReadFile(filepath.Join(r, "config", "awg0.conf"))
-	if err != nil {
-		return err
-	}
-	peersOnly := StripInterfaceBlock(string(data))
-	sync := c.ComposeRun(r, env, peersOnly+"\n",
-		"exec", "-T", "awg", "awg", "syncconf", "awg0", "/dev/stdin")
-	if sync.ExitCode == 0 {
-		c.say("applied via awg syncconf")
-	} else {
-		c.say("syncconf failed (%s)", strings.TrimSpace(sync.Stderr))
-	}
-	// Production lesson: the userspace daemon can silently wedge fresh
-	// handshakes after peers are stripped/re-added via syncconf (the iphone
-	// incident). Restart unconditionally — syncconf alone gives false success.
+// applyAdd applies a NEW peer to the running containers without any restart:
+// `awg set` adds the peer to the live daemon (nothing is removed, so the
+// userspace syncconf wedge cannot occur), and SIGHUP makes dnsmasq re-read
+// peers.hosts for the new MagicDNS record.
+func (c *Cli) applyAdd(r string, env map[string]string, p peers.Peer) error {
+	c.ComposeRun(r, env, "",
+		"exec", "-T", "awg", "awg", "set", "awg0",
+		"peer", p.Pub, "allowed-ips", p.IP+"/32")
+	c.say("applied via awg set")
+	c.reloadDNS(r, env)
+	c.say("dns records reloaded")
+	return nil
+}
+
+// applyRename applies a peer RENAME: only MagicDNS changes (keys/IPs are
+// unchanged), so SIGHUP dnsmasq and nothing else.
+func (c *Cli) applyRename(r string, env map[string]string) error {
+	c.reloadDNS(r, env)
+	c.say("dns records reloaded")
+	return nil
+}
+
+// applyRevoke applies a peer REVOKE. Removing peers from the userspace
+// daemon is the operation that can silently wedge fresh handshakes (the
+// iphone incident), and no UAPI variant is trusted there — restart awg so
+// it re-reads awg0.conf in a fresh process. start.sh re-applies iptables;
+// the dns sidecar is restarted too (it must follow awg into the new netns).
+func (c *Cli) applyRevoke(r string, env map[string]string) error {
 	c.ComposeRun(r, env, "", "restart", "awg")
-	// dnsmasq ignores SIGHUP for config changes — restart the sidecar too.
 	c.ComposeRun(r, env, "", "restart", "dns")
 	return nil
 }
 
-// StripInterfaceBlock removes the [Interface] section from an awg-quick
-// config. syncconf only understands [Peer] sections ([Interface] keys like
-// Address are wg-quick-isms and rejected), so we strip the block before
-// piping the config in.
-func StripInterfaceBlock(text string) string {
-	var lines []string
-	skipping := false
-	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
-		if strings.TrimSpace(line) == "[Interface]" {
-			skipping = true
-			continue
-		}
-		if skipping && strings.HasPrefix(line, "[") {
-			skipping = false
-		}
-		if !skipping {
-			lines = append(lines, line)
-		}
-	}
-	return strings.Join(lines, "\n")
+// reloadDNS SIGHUPs dnsmasq (PID 1 in the sidecar) — re-reads the addn-hosts
+// file.
+func (c *Cli) reloadDNS(r string, env map[string]string) {
+	c.ComposeRun(r, env, "", "exec", "-T", "dns", "kill", "-HUP", "1")
 }
 
 // --- tiny arg parser --------------------------------------------------------

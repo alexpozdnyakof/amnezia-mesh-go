@@ -8,10 +8,10 @@
 # normalization, byte-for-byte:
 #   - exit codes
 #   - stdout / stderr (root paths, timestamps, OBF values normalized)
-#   - config trees (server.env, peers.db, awg0.conf, dnsmasq.conf, start.sh,
-#     peers/*.conf; *.vpn excluded — deflate streams legitimately differ
-#     between zlib implementations, profile semantic parity is covered by
-#     unit tests)
+#   - config trees (server.env, peers.db, awg0.conf, dnsmasq.conf,
+#     peers.hosts, start.sh, peers/*.conf; *.vpn excluded — deflate streams
+#     legitimately differ between zlib implementations, profile semantic
+#     parity is covered by unit tests)
 #
 # Normalized: OBF_* values (Python draws real randomness, Go uses
 # AWG_MESH_SEED), ISO-8601 timestamps, per-root paths.

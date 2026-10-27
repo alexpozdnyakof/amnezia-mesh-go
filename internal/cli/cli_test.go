@@ -181,8 +181,8 @@ func TestPeerRenameAndRevokeFlow(t *testing.T) {
 	if len(plist) != 0 {
 		t.Fatalf("after revoke: %+v", plist)
 	}
-	// rename + revoke both apply conf: syncconf, restart awg, restart dns
-	want := []string{"exec", "restart", "restart", "exec", "restart", "restart"}
+	// rename reloads dns only (SIGHUP); revoke restarts awg + dns
+	want := []string{"exec", "restart", "restart"}
 	if strings.Join(rec.compose, ",") != strings.Join(want, ",") {
 		t.Fatalf("compose calls = %v, want %v", rec.compose, want)
 	}
