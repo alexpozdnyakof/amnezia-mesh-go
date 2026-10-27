@@ -29,6 +29,26 @@ Or build from source:
 go build ./cmd/awg-mesh
 ```
 
+## Setup with an AI agent (Claude Code, Kimi Code, Cursor, …)
+
+The binary ships its own operator skill — a compact runbook covering
+install, the automation protocol, restart semantics and a troubleshooting
+decision tree. Hand it to your agent and the whole flow becomes
+conversational:
+
+```sh
+brew tap alexpozdnyakof/tap
+brew install --cask alexpozdnyakof/tap/awg-mesh
+
+awg-mesh skill --install   # ~/.agents/skills/awg-mesh/SKILL.md
+```
+
+Then just ask, e.g. *"set up my VPN on this VPS (IP 203.0.113.7), add my
+laptop and phone, then run the self-checks"*. The agent runs
+`awg-mesh init` / `peer add` / `doctor --json`, and diagnoses connectivity
+with the skill's decision tree. `AGENTS.md` at the repo root orients agents
+browsing the checkout.
+
 ## Usage
 
 Identical to the Python version — same commands, same flags, same JSON
