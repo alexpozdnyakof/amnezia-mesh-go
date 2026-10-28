@@ -25,7 +25,7 @@ PY_REPO="${AWG_MESH_PY:-$(cd "$REPO/.." && pwd)/amnezia-mesh}"
 PY="$PY_REPO/.venv/bin/python"
 [ -x "$PY" ] || PY="python3"
 
-WORK="$(mktemp -d -t awg-mesh-parity)"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/awg-mesh-parity.XXXXXX")"
 trap 'rc=$?; if [ "$rc" -eq 0 ]; then rm -rf "$WORK"; else echo "work preserved: $WORK" >&2; fi' EXIT
 
 GOBIN="$WORK/awg-mesh"
