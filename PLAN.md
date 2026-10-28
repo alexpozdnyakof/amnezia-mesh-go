@@ -56,6 +56,10 @@
 
 **Этап 5 — релизная механика (1 день).** `.goreleaser.yml` (linux/darwin × amd64/arm64), тег, GitHub Releases, brew tap.
 
+**Этап 6 — restart-free apply (сделано, e1395c0 / python eba17a8).** `peer add` — инкрементальный `awg set` + SIGHUP dnsmasq (`peers.hosts` через `--addn-hosts`); `peer rename` — только SIGHUP; `peer revoke` — restart (userspace wedge, см. комментарий в cli).
+
+**Этап 7 — remote mode, дизайн A «thin proxy» (запланировано).** Админка с мака: `--server <ssh-alias>` / `AWG_MESH_SSH` + `AWG_MESH_REMOTE_ROOT`. Семантика: маковский CLI не дублирует логику — он исполняет `ssh <alias> 'cd <root> && awg-mesh <args>'` системным ssh-клиентом (ключи из ssh-config пользователя), а после мутирующих команд вытягивает `config/peers/` обратно scp, чтобы `.vpn`-профили оказались локально. На сервере требуется любой awg-mesh CLI (python или go). Дизайн B (`DOCKER_HOST=ssh://`) отвергнут: bind-mounts резолвятся на удалённой стороне, половина doctor'овских проверок локальна. Связь с TUI (`amnezia-mesh-tui`): панель имеет собственный ssh-транспорт (shell-out, `transport.rs`) и на эту фичу не зависит; remote mode — CLI-эквивалент для терминала и агентов. Реализация в обоих репо в lockstep + parity-шаг 14 (ssh-заглушка в harness).
+
 Итого: ~1,5–2 недели фокусной работы.
 
 ## Критерий приёмки
@@ -67,7 +71,7 @@
 
 ## Бэклог
 
-- **CI:** GitHub Actions — golden + parity на linux/macos перед релизом (после этапа 5).
+- **CI (сделано):** GitHub Actions — `test` (gofmt/vet/go test) + `parity` (13 шагов против Python-репо) на push/PR; `release.yml` — goreleaser по тегу `v*`.
 - **README Tier-3 переводы** (ko, fr, hi, id, uk) одним проходом под релиз amnezia-mesh-go, с синхронизацией всего существующего набора (из мастер-плана).
 - bulk rename auto-generated имён (мелочь).
 - Опционально: fuzz profile codec.
