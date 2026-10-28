@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
+      - name: vet
+        run: go vet ./...
+      - name: test
+        run: go test ./...
+
+  parity:
+    # Byte-level parity vs the frozen Python reference CLI. Docker is
+    # shimmed by the harness: no daemon, no privileged runner, and never
+    # any production system.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: amnezia-mesh-go
+      - uses: actions/checkout@v4
+        with:
+          repository: alexpozdnyakof/amnezia-mesh
+          path: amnezia-mesh
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: amnezia-mesh-go/go.mod
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: parity harness
+        working-directory: amnezia-mesh-go
+        run: bash scripts/parity.sh
