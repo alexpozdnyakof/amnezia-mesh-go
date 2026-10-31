@@ -113,7 +113,21 @@ func (c *Cli) Run(args []string) int {
 		fmt.Fprintf(c.Stdout, "awg-mesh %s\n", Version)
 		return 0
 	}
-	code, err := c.dispatch(argv)
+	alias, rest, rerr := resolveRemote(argv)
+	var code int
+	var err error
+	switch {
+	case rerr != nil:
+		code, err = 1, c.failf("%v", rerr)
+	case alias != "" && !isLocalOnly(rest):
+		code, err = c.runRemote(alias, rest)
+	default:
+		if len(rest) > 0 && (rest[0] == "--version" || rest[0] == "-version") {
+			fmt.Fprintf(c.Stdout, "awg-mesh %s\n", Version)
+			return 0
+		}
+		code, err = c.dispatch(rest)
+	}
 	if err == nil {
 		return code
 	}

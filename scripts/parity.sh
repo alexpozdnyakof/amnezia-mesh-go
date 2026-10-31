@@ -192,6 +192,34 @@ step "$PYADOPT" "$GOADOPT" "adopt: list"   peer list --json
 # same bytes.
 step "$PYROOT" "$GROOT" "skill" skill
 
+# --- flow 4: remote mode (stage 7, thin ssh proxy) ---------------------------
+# AWG_MESH_SSH puts both CLIs into proxy mode; the ssh/scp shims answer
+# deterministically. Mutating commands must pull config/peers/ back (scp
+# shim mirrors a canned dir); skill / --version must stay local.
+cp "$HERE/parity-ssh-shim.sh" "$SHIMDIR/ssh"
+cp "$HERE/parity-ssh-shim.sh" "$SHIMDIR/scp"
+chmod +x "$SHIMDIR/ssh" "$SHIMDIR/scp"
+CANNED="$WORK/canned-peers"
+mkdir -p "$CANNED"
+printf '[Interface]\n# canned remote profile stub\n' >"$CANNED/parity-phone-exit.conf"
+export PARITY_CANNED_PEERS="$CANNED"
+export AWG_MESH_SSH=parity-vps
+export AWG_MESH_REMOTE_ROOT='~'
+PYREMOTE="$WORK/py-remote"
+GOREMOTE="$WORK/go-remote"
+mkdir -p "$PYREMOTE" "$GOREMOTE"
+
+step "$PYREMOTE" "$GOREMOTE" "remote: peer list --json" \
+  peer list --json
+step "$PYREMOTE" "$GOREMOTE" "remote: peer add syncs config/peers" \
+  peer add parity-phone --json
+step "$PYREMOTE" "$GOREMOTE" "remote: revoke failure keeps rc, no sync" \
+  peer revoke parity-phone --json
+step "$PYREMOTE" "$GOREMOTE" "remote: --server flag" \
+  --server other-vps peer list --json
+step "$PYREMOTE" "$GOREMOTE" "remote: skill stays local" skill
+step "$PYREMOTE" "$GOREMOTE" "remote: --version stays local" --version
+
 echo "------------------------------------------------------------"
 if [ "$fails" -eq 0 ]; then
   echo "PARITY OK: $step_no steps, zero diffs"
