@@ -54,7 +54,15 @@
 - Live-проверка doctor/adopt — на параллельном стенде (решение 8), прод не трогаем.
 Критерий: нулевой diff на полном наборе команд.
 
-**Этап 5 — релизная механика (1 день).** `.goreleaser.yml` (linux/darwin × amd64/arm64), тег, GitHub Releases, brew tap.
+**Этап 5 — релизная механика (сделано, v0.2.0).** `.goreleaser.yml` (linux/darwin × amd64/arm64), тег, GitHub Releases, brew tap.
+
+**Этап 5b — Mac brew-пакет.** Один cask `awg-mesh`. Formula (`brews`) в GoReleaser снята с 2.16, prebuilt-бинари публикуются cask'ом; сборщик `prebuilt` — только Pro, поэтому TUI кладётся в darwin-архив обычным `files`. `brew install --cask alexpozdnyakof/tap/awg-mesh` ставит на Mac:
+
+- `awg-mesh` — CLI, интерфейс агентов (`--json`, `skill --install`);
+- `awg-mesh-tui` — панель. `awg-mesh-tui install` спрашивает SSH-цель (или берёт `--ssh`) и копирует linux-бинарь в `~/.local/bin/awg-mesh` на VPS. `init` / `adopt` остаются мастером панели;
+- payloads `linux/amd64` и `linux/arm64` лежат рядом с бинарём в Caskroom, копия идёт по SSH с Мака.
+
+Cask только darwin (в одном cask нельзя объявить `awg-mesh-tui`, если его нет в linux-архиве). Linux-сборки CLI — GitHub Releases. Карантин снимается через `hooks.post.install_steps` и `{{ .StagedPath }}`: в v0.2.0 хук записан литералом `{{appdir}}` и не срабатывает. Сборка: `scripts/stage-mac-bundle.sh`, релизный job на `macos-latest` (оба darwin-таргета TUI из `amnezia-mesh-tui`).
 
 **Этап 6 — restart-free apply (сделано, e1395c0 / python eba17a8).** `peer add` — инкрементальный `awg set` + SIGHUP dnsmasq (`peers.hosts` через `--addn-hosts`); `peer rename` — только SIGHUP; `peer revoke` — restart (userspace wedge, см. комментарий в cli).
 

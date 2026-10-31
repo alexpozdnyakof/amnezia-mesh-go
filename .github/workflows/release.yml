@@ -8,16 +8,35 @@ on:
 permissions:
   contents: write
 
+# One macOS job: Go cross-compiles the linux payloads, Rust builds both
+# darwin TUIs, goreleaser packs the cask. The TUI ref is the public repo;
+# push amnezia-mesh-tui before tagging or the cask ships the previous panel.
+env:
+  TUI_REF: main
+
 jobs:
   goreleaser:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: alexpozdnyakof/amnezia-mesh-tui
+          ref: ${{ env.TUI_REF }}
+          path: tui
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - name: stage mac bundle
+        env:
+          AWG_MESH_TUI: tui
+          AWG_MESH_DARWIN_ARCHS: arm64 amd64
+        run: bash scripts/stage-mac-bundle.sh
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser

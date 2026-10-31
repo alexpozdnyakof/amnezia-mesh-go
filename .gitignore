@@ -1,3 +1,4 @@
 /awg-mesh
 .DS_Store
 dist/
+build/

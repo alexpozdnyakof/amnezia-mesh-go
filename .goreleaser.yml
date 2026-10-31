@@ -6,8 +6,13 @@ before:
   hooks:
     - go mod tidy
 
+# Darwin and linux are separate builds so the macOS archive can carry the
+# TUI and the linux server payloads without those files landing in the
+# linux release tarball. GoReleaser's prebuilt builder is Pro-only; the
+# TUI is staged by scripts/stage-mac-bundle.sh and added as archive files.
 builds:
-  - main: ./cmd/awg-mesh
+  - id: awg-mesh-mac
+    main: ./cmd/awg-mesh
     binary: awg-mesh
     env:
       - CGO_ENABLED=0
@@ -16,11 +21,40 @@ builds:
     targets:
       - darwin_arm64
       - darwin_amd64
+  - id: awg-mesh-linux
+    main: ./cmd/awg-mesh
+    binary: awg-mesh
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/alexpozdnyakof/amnezia-mesh-go/internal/cli.Version={{.Version}}
+    targets:
       - linux_arm64
       - linux_amd64
 
 archives:
-  - formats: [tar.gz]
+  - id: mac
+    ids:
+      - awg-mesh-mac
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: build/tui/{{ .Os }}_{{ .Arch }}/awg-mesh-tui
+        dst: awg-mesh-tui
+        info:
+          mode: 0755
+      - src: build/payload/linux_amd64/awg-mesh
+        dst: payload/linux_amd64/awg-mesh
+        info:
+          mode: 0755
+      - src: build/payload/linux_arm64/awg-mesh
+        dst: payload/linux_arm64/awg-mesh
+        info:
+          mode: 0755
+  - id: linux
+    ids:
+      - awg-mesh-linux
+    formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
@@ -39,17 +73,27 @@ changelog:
 
 homebrew_casks:
   - name: awg-mesh
+    ids:
+      - mac
     repository:
       owner: alexpozdnyakof
       name: homebrew-tap
       token: "{{ .Env.GITHUB_TOKEN }}"
     directory: Casks
     homepage: "https://github.com/alexpozdnyakof/amnezia-mesh-go"
-    description: "Self-hosted WireGuard mesh with AmneziaWG obfuscation, MagicDNS and exit/mesh profiles (Go CLI)"
+    description: "Self-hosted WireGuard mesh CLI and macOS install panel (AmneziaWG, MagicDNS, exit/mesh profiles)"
     license: "MIT"
-    # The binary is not signed/notarized — clear the quarantine attribute so
-    # Gatekeeper does not block it after brew installs the cask.
+    binaries:
+      - awg-mesh
+      - awg-mesh-tui
+    # Unsigned binaries. install_steps is the Homebrew 5 declarative form
+    # (preflight/postflight are deprecated). {{ .StagedPath }} becomes the
+    # cask staged_path token; v0.2.0 emitted a literal {{appdir}} and the
+    # quarantine bit stayed set.
     hooks:
       post:
         install_steps: |
-          run "xattr", args: ["-dr", "com.apple.quarantine", "{{ .AppDir }}/awg-mesh"]
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/awg-mesh"]
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/awg-mesh-tui"]
+          end

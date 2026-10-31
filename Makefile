@@ -9,10 +9,13 @@ test:
 parity:
 	bash scripts/parity.sh
 
-# Local, no-publish build of all release artifacts (needs goreleaser).
+# Local snapshot of the macOS cask (both darwin archs).
+# Needs the sibling ../amnezia-mesh-tui checkout (or AWG_MESH_TUI).
 snapshot:
+	bash scripts/stage-mac-bundle.sh
 	goreleaser release --snapshot --clean
 
-# Tag-driven release: cross-compiled binaries + GitHub Release + brew formula.
+# Tag-driven release. CI sets AWG_MESH_DARWIN_ARCHS to both darwin archs.
 release:
+	bash scripts/stage-mac-bundle.sh
 	goreleaser release --clean

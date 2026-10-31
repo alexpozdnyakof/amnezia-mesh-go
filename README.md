@@ -21,9 +21,14 @@ brew tap alexpozdnyakof/tap
 brew install --cask alexpozdnyakof/tap/awg-mesh
 
 awg-mesh --version
+awg-mesh-tui install --ssh root@YOUR_VPS
 ```
 
-Or build from source:
+The cask is macOS. It installs `awg-mesh` (CLI, the agent interface) and
+`awg-mesh-tui` (asks for an SSH target and copies the bundled Linux CLI
+onto the VPS). Linux builds are the release tarballs.
+
+Or build the CLI from source:
 
 ```sh
 go build ./cmd/awg-mesh
@@ -40,14 +45,15 @@ conversational:
 brew tap alexpozdnyakof/tap
 brew install --cask alexpozdnyakof/tap/awg-mesh
 
+awg-mesh-tui install --ssh root@YOUR_VPS --json
 awg-mesh skill --install   # ~/.agents/skills/awg-mesh/SKILL.md
 ```
 
-Then just ask, e.g. *"set up my VPN on this VPS (IP 203.0.113.7), add my
-laptop and phone, then run the self-checks"*. The agent runs
-`awg-mesh init` / `peer add` / `doctor --json`, and diagnoses connectivity
-with the skill's decision tree. `AGENTS.md` at the repo root orients agents
-browsing the checkout.
+Then just ask, e.g. *"the CLI is at the remote_path from that JSON; init
+the mesh on 203.0.113.7, add my laptop and phone, then run doctor"*. The
+agent runs `awg-mesh init` / `peer add` / `doctor --json` on the server and
+diagnoses connectivity with the skill's decision tree. `AGENTS.md` at the
+repo root orients agents browsing the checkout.
 
 ## Usage
 

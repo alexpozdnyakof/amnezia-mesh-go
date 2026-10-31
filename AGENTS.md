@@ -12,7 +12,8 @@ byte-identical artifacts, stdout/stderr and exit codes, enforced by
 go test ./...          # unit + golden tests (fixtures are the contract)
 make parity            # 12-step side-by-side harness vs the Python CLI
                        # (docker shimmed; no daemon, never the prod server)
-make snapshot          # local goreleaser build (binaries + brew cask)
+make snapshot          # local goreleaser snapshot of the macOS cask
+                       # (both darwin archs; needs ../amnezia-mesh-tui)
 ```
 
 ## Layout
