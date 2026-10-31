@@ -75,6 +75,20 @@ Every command supports `--json` (single JSON object on stdout, non-zero exit +
 `{"ok": false, "error": "..."}` on failure) and `AWG_MESH_*` env-var
 overrides; fully non-interactive via `AWG_MESH_NONINTERACTIVE=1`.
 
+Remote mode drives a server copy of the CLI over ssh (thin proxy — no logic
+is duplicated locally):
+
+```sh
+awg-mesh --server my-vps peer list --json   # or: export AWG_MESH_SSH=my-vps
+```
+
+Runs `ssh my-vps 'cd ~ && awg-mesh <args>'` with the system ssh client and
+passes stdout/stderr/exit codes through. After `init` / `adopt` /
+`peer add|rename|revoke` the remote `config/peers/` is mirrored back with scp,
+so `.vpn` profiles land next to the local checkout. `AWG_MESH_REMOTE_ROOT`
+sets the mesh root on the server (default `~`). `skill` and `--version` stay
+local.
+
 ## Layout
 
 | Path | Contents |
