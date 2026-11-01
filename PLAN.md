@@ -79,10 +79,13 @@ Cask только darwin (в одном cask нельзя объявить `awg-
 
 ## Бэклог
 
-- **CI (сделано):** GitHub Actions — `test` (gofmt/vet/go test) + `parity` (13 шагов против Python-репо) на push/PR; `release.yml` — goreleaser по тегу `v*`.
+- **CI (сделано):** GitHub Actions — `test` (gofmt/vet/go test) + `parity` (26 шагов против Python-репо) на push/PR; `release.yml` — goreleaser по тегу `v*`.
 - **README Tier-3 переводы** (ko, fr, hi, id, uk) одним проходом под релиз amnezia-mesh-go, с синхронизацией всего существующего набора (из мастер-плана).
-- bulk rename auto-generated имён (мелочь).
-- Опционально: fuzz profile codec.
+- **bulk rename auto-generated имён (сделано, python 51a83b6 / go — этот коммит):** `peer rename` принимает несколько old/new пар разом; валидация all-or-nothing, свопы поддержаны, один render + один SIGHUP.
+- **peer rotate (сделано, из плана панели):** ротация keypair+PSK пира (IP/имя прежние), restart-путь как у revoke; девайс переимпортирует профиль.
+- **Свои DNS-записи (сделано, из плана панели):** `dns add|remove|list` поверх `<name>.<domain>`; config/custom.hosts как второй addn-hosts, SIGHUP вместо рестарта.
+- **userspace-fallback в start.sh (сделано, из плана панели):** при провале awg-quick ретрай с WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go (VPS без модуля ядра).
+- Опционально: ~~fuzz profile codec~~ (сделано: Go `FuzzCodecRoundtrip` — 650k+ execs без находок; python — seeded roundtrip 300 профилей + 500 random-блобов).
 
 ## Риски
 

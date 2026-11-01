@@ -64,12 +64,18 @@ rendered peer configs):
 ```sh
 awg-mesh init --host YOUR_IP_OR_DOMAIN --port 443
 awg-mesh peer add laptop     # → vpn:// profiles + .conf for the Amnezia app
+awg-mesh peer rename laptop laptop2 old-phone phone  # several pairs at once
+awg-mesh peer rotate laptop2 # re-issue keys (same IP; device re-imports)
+awg-mesh dns add nas 100.64.0.50   # custom MagicDNS record, no restart
 awg-mesh peer list --json
 awg-mesh doctor              # post-install self-checks
 awg-mesh monitoring install  # optional: cron stats + watchdog
 awg-mesh skill --install     # optional: install the bundled agent skill
                              # (~/.agents/skills/, for coding assistants)
 ```
+
+`start.sh` (rendered into the hub container) falls back to the userspace
+`amneziawg-go` backend when the kernel module is missing on the VPS.
 
 Every command supports `--json` (single JSON object on stdout, non-zero exit +
 `{"ok": false, "error": "..."}` on failure) and `AWG_MESH_*` env-var
