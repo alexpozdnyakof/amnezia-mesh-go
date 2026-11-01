@@ -5,7 +5,10 @@
 //	dnsmasq.conf - dnsmasq for MagicDNS (sidecar shares awg netns)
 //	peers.hosts  - MagicDNS host records (dnsmasq --addn-hosts; re-read on
 //	               SIGHUP so peer changes don't restart the sidecar)
-//	start.sh     - container entrypoint: awg-quick + iptables bootstrap
+//	start.sh     - container entrypoint: awg-quick (+ userspace fallback)
+//	               + iptables bootstrap
+//	custom.hosts - created when missing only; operator DNS records
+//	               (`awg-mesh dns`) — user data, never re-rendered
 //
 // Output is byte-identical to the Python reference (awg_mesh/render.py) —
 // the golden files under testdata/fixtures/golden are the contract.
@@ -124,7 +127,28 @@ func RenderDnsmasq(env map[string]string, plist []peers.Peer) (string, error) {
 	// SIGHUP, so peer add/rename reload MagicDNS without restarting the
 	// sidecar. (The main config file is never re-read by dnsmasq.)
 	lines = append(lines, "addn-hosts=/etc/peers.hosts")
+	// Operator records managed by `awg-mesh dns` (config/custom.hosts). The
+	// file is user data: render only creates it when missing, never
+	// overwrites it.
+	lines = append(lines, "addn-hosts=/etc/custom.hosts")
 	return strings.Join(lines, "\n") + "\n", nil
+}
+
+// CustomHostsHeader is the header of config/custom.hosts (the dnsmasq
+// --addn-hosts input for `awg-mesh dns` records). Written only when the
+// file does not exist yet.
+const CustomHostsHeader = "# amnezia-mesh custom DNS records (config/custom.hosts).\n" +
+	"# Managed by `awg-mesh dns add|remove`; dnsmasq re-reads this file on\n" +
+	"# SIGHUP, so changes apply without restarting the sidecar.\n"
+
+// EnsureCustomHosts creates config/custom.hosts when missing. User data
+// afterwards — never overwritten.
+func EnsureCustomHosts(cfgDir string) error {
+	path := filepath.Join(cfgDir, "custom.hosts")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return writeFile(path, CustomHostsHeader, 0)
+	}
+	return nil
 }
 
 // RenderPeersHosts renders the /etc/hosts-format file for dnsmasq
@@ -150,7 +174,18 @@ const startShTemplate = `#!/bin/sh
 echo "amnezia-mesh: starting"
 sysctl -w net.ipv4.ip_forward=1 2>/dev/null || true
 awg-quick down /opt/amnezia/awg/awg0.conf 2>/dev/null
-awg-quick up /opt/amnezia/awg/awg0.conf || { echo "amnezia-mesh: awg-quick failed"; exit 1; }
+if awg-quick up /opt/amnezia/awg/awg0.conf; then
+  echo "amnezia-mesh: backend up"
+else
+  # VPS without the kernel module (or a tools/module generation mismatch):
+  # force the userspace implementation shipped in the image. Same config,
+  # same obfuscation — ~30-50% CPU overhead is the price.
+  echo "amnezia-mesh: kernel backend failed, falling back to userspace amneziawg-go"
+  awg-quick down /opt/amnezia/awg/awg0.conf 2>/dev/null
+  if ! WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go awg-quick up /opt/amnezia/awg/awg0.conf; then
+    echo "amnezia-mesh: awg-quick failed"; exit 1
+  fi
+fi
 
 SUBNET={subnet}
 IFACE=$(ip route show default 2>/dev/null | awk 'NR==1 {print $5}')
@@ -240,6 +275,9 @@ func RenderAll(root string) (int, error) {
 		return 0, err
 	}
 	if err := writeFile(filepath.Join(cfgDir, "start.sh"), start, 0o755); err != nil {
+		return 0, err
+	}
+	if err := EnsureCustomHosts(cfgDir); err != nil {
 		return 0, err
 	}
 	return len(plist), nil

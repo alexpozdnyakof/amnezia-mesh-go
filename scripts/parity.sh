@@ -171,7 +171,15 @@ step "$PYROOT" "$GROOT" "peer list"        peer list
 step "$PYROOT" "$GROOT" "peer list --json" peer list --json
 step "$PYROOT" "$GROOT" "peer add"         peer add parity-dev1
 step "$PYROOT" "$GROOT" "peer rename"      peer rename parity-dev1 parity-dev2
-step "$PYROOT" "$GROOT" "peer revoke"      peer revoke parity-dev2
+step "$PYROOT" "$GROOT" "peer rotate"      peer rotate parity-dev2
+step "$PYROOT" "$GROOT" "peer add (2nd)"   peer add parity-dev1
+step "$PYROOT" "$GROOT" "peer rename (bulk)" \
+  peer rename parity-dev1 parity-a parity-dev2 parity-b
+step "$PYROOT" "$GROOT" "dns add"          dns add nas 100.64.0.50
+step "$PYROOT" "$GROOT" "dns list --json"  dns list --json
+step "$PYROOT" "$GROOT" "dns remove"       dns remove nas
+step "$PYROOT" "$GROOT" "peer revoke"      peer revoke parity-b
+step "$PYROOT" "$GROOT" "peer revoke (2nd)" peer revoke parity-a
 
 # --- flow 2: adopt -----------------------------------------------------------
 step "$PYADOPT" "$GOADOPT" "adopt --inspect --json" \

@@ -72,7 +72,7 @@ func isMutating(argv []string) bool {
 	case "peer":
 		if len(argv) > 1 {
 			switch argv[1] {
-			case "add", "rename", "revoke":
+			case "add", "rename", "revoke", "rotate":
 				return true
 			}
 		}

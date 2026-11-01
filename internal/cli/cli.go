@@ -160,6 +160,8 @@ func (c *Cli) dispatch(argv []string) (int, error) {
 		return c.cmdDoctor(rest)
 	case "monitoring":
 		return c.cmdMonitoring(rest)
+	case "dns":
+		return c.cmdDns(rest)
 	case "skill":
 		return c.cmdSkill(rest)
 	default:
@@ -170,8 +172,8 @@ func (c *Cli) dispatch(argv []string) (int, error) {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprintln(w, "usage: awg-mesh [--json] <command> [args]")
-	fmt.Fprintln(w, "commands: init, adopt, peer add|list|revoke|rename, doctor, monitoring install|uninstall, skill [--install]")
+	fmt.Fprintln(w, "usage: awg-mesh [--json] [--server alias] <command> [args]")
+	fmt.Fprintln(w, "commands: init, adopt, peer add|list|revoke|rename|rotate, doctor, monitoring install|uninstall, dns add|remove|list, skill [--install]")
 }
 
 // say is a progress note, human mode only (stdout stays machine-readable).
@@ -603,6 +605,8 @@ func (c *Cli) cmdPeer(args []string) (int, error) {
 		return c.cmdPeerRevoke(rest)
 	case "rename":
 		return c.cmdPeerRename(rest)
+	case "rotate":
+		return c.cmdPeerRotate(rest)
 	default:
 		fmt.Fprintf(c.Stderr, "awg-mesh: error: unknown peer command: %s\n", sub)
 		usage(c.Stderr)
@@ -732,32 +736,63 @@ func (c *Cli) cmdPeerList(args []string) (int, error) {
 
 func (c *Cli) cmdPeerRename(args []string) (int, error) {
 	_, pos, err := parseArgs(args, nil)
-	if err != nil || len(pos) != 2 {
-		if err == nil {
-			err = fmt.Errorf("expected: peer rename <name> <new_name>")
-		}
+	if err != nil {
 		return 2, c.argErr("peer rename", err)
 	}
-	oldName, newName := pos[0], pos[1]
+	if len(pos) == 0 {
+		return 2, c.argErr("peer rename",
+			fmt.Errorf("expected: peer rename <old> <new> [pairs...]"))
+	}
+	if len(pos)%2 != 0 {
+		return 1, c.failf("peer rename takes <old> <new> pairs")
+	}
+	ops := make([][2]string, 0, len(pos)/2)
+	for i := 0; i < len(pos); i += 2 {
+		ops = append(ops, [2]string{pos[i], pos[i+1]})
+	}
 	r := root()
 	envFile, err := c.requireInit(r)
 	if err != nil {
 		return 0, err
-	}
-	if !peers.ValidName(newName) {
-		return 0, c.failf("invalid peer name: %s (lowercase letters, digits, dash, max 32)", newName)
 	}
 	env, err := envfile.Load(envFile)
 	if err != nil {
 		return 0, err
 	}
 	err = peers.WithLock(filepath.Join(r, "config", "peers.db"), func(tx *peers.Tx) error {
-		if tx.Find(oldName) == nil {
-			return c.failf("no such peer: %s", oldName)
+		existing := make(map[string]bool, len(tx.Peers))
+		olds := make(map[string]bool, len(ops))
+		for _, p := range tx.Peers {
+			existing[p.Name] = true
 		}
-		if !tx.Rename(oldName, newName) {
-			return c.failf("peer already exists: %s", newName)
+		for _, op := range ops {
+			olds[op[0]] = true
 		}
+		// Validate everything before touching anything — a failed bulk
+		// rename must leave the db untouched. A new name may reuse any old
+		// name in this call (swaps included), since all olds go away.
+		seenOld, seenNew := map[string]bool{}, map[string]bool{}
+		for _, op := range ops {
+			oldName, newName := op[0], op[1]
+			if seenOld[oldName] {
+				return c.failf("peer renamed twice in one call: %s", oldName)
+			}
+			seenOld[oldName] = true
+			if tx.Find(oldName) == nil {
+				return c.failf("no such peer: %s", oldName)
+			}
+			if !peers.ValidName(newName) {
+				return c.failf("invalid peer name: %s (lowercase letters, digits, dash, max 32)", newName)
+			}
+			if seenNew[newName] {
+				return c.failf("duplicate new name: %s", newName)
+			}
+			seenNew[newName] = true
+			if existing[newName] && !olds[newName] {
+				return c.failf("peer already exists: %s", newName)
+			}
+		}
+		tx.RenameMany(ops)
 		return nil
 	})
 	if err != nil {
@@ -769,8 +804,84 @@ func (c *Cli) cmdPeerRename(args []string) (int, error) {
 	if err := c.applyRename(r, env); err != nil {
 		return 0, err
 	}
-	c.say("peer '%s' renamed to '%s'", oldName, newName)
-	c.ok("renamed", oldName, "name", newName)
+	for _, op := range ops {
+		c.say("peer '%s' renamed to '%s'", op[0], op[1])
+	}
+	if len(ops) == 1 {
+		c.ok("renamed", ops[0][0], "name", ops[0][1])
+	} else {
+		renamed := ojson.New()
+		for _, op := range ops {
+			renamed.Set(op[0], op[1])
+		}
+		c.ok("renamed", renamed)
+	}
+	return 0, nil
+}
+
+// cmdPeerRotate re-issues a device's key material: new keypair + PSK, same
+// name and IP. The old pubkey must leave the running daemon, and removing
+// peers from the userspace daemon is the operation that can silently wedge
+// fresh handshakes — so rotation restarts the hub exactly like revoke does.
+// The device must re-import its profile; the old vpn:// link dies.
+func (c *Cli) cmdPeerRotate(args []string) (int, error) {
+	_, pos, err := parseArgs(args, nil)
+	if err != nil || len(pos) != 1 {
+		if err == nil {
+			err = fmt.Errorf("expected exactly one positional argument: name")
+		}
+		return 2, c.argErr("peer rotate", err)
+	}
+	name := pos[0]
+	r := root()
+	envFile, err := c.requireInit(r)
+	if err != nil {
+		return 0, err
+	}
+	env, err := envfile.Load(envFile)
+	if err != nil {
+		return 0, err
+	}
+	var priv, pub, psk, ip string
+	err = peers.WithLock(filepath.Join(r, "config", "peers.db"), func(tx *peers.Tx) error {
+		p := tx.Find(name)
+		if p == nil {
+			return c.failf("no such peer: %s", name)
+		}
+		if !c.confirm(fmt.Sprintf("rotate keys for '%s'? the device must re-import its profile; the hub restarts", name)) {
+			return c.failf("aborted")
+		}
+		c.say("generating new keys for %s ...", name)
+		priv, pub, err = keygen.GenKeypair(env["AWG_MESH_IMAGE"])
+		if err != nil {
+			return c.failf("%v", err)
+		}
+		psk, err = keygen.GenPSK(env["AWG_MESH_IMAGE"])
+		if err != nil {
+			return c.failf("%v", err)
+		}
+		ip = p.IP
+		tx.RotateKeys(name, pub, psk)
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	if _, err := render.RenderAll(r); err != nil {
+		return 0, err
+	}
+	if err := c.applyRevoke(r, env); err != nil {
+		return 0, err
+	}
+	prefix := filepath.Join(r, "config", "peers", name)
+	if _, err := profile.GenerateProfiles(envFile, name, ip, priv, pub, psk, prefix); err != nil {
+		return 0, err
+	}
+	c.out("")
+	c.out(fmt.Sprintf("peer '%s' rotated: %s (new keypair + psk)", name, ip))
+	c.out("import the new profile on the device — the old vpn:// link stops working")
+	c.ok("rotated", name, "ip", ip,
+		"profiles", []any{prefix + "-exit.vpn", prefix + "-mesh.vpn"})
 	return 0, nil
 }
 

@@ -113,6 +113,34 @@ func (t *Tx) Find(name string) *Peer {
 	return nil
 }
 
+// RotateKeys re-issues a peer's key material (name/IP/created stay).
+// Returns nil if the peer is missing.
+func (t *Tx) RotateKeys(name, pub, psk string) *Peer {
+	p := t.Find(name)
+	if p == nil {
+		return nil
+	}
+	p.Pub = pub
+	p.PSK = psk
+	t.dirty = true
+	return p
+}
+
+// RenameMany applies pre-validated old→new pairs in one dirty transaction.
+// Callers validate first (existence, name validity, collisions, swaps).
+func (t *Tx) RenameMany(pairs [][2]string) {
+	mapping := make(map[string]string, len(pairs))
+	for _, pair := range pairs {
+		mapping[pair[0]] = pair[1]
+	}
+	for i := range t.Peers {
+		if nn, ok := mapping[t.Peers[i].Name]; ok {
+			t.Peers[i].Name = nn
+		}
+	}
+	t.dirty = true
+}
+
 // WithLock runs fn as an exclusive-locking read-modify-write transaction
 // over peers.db at path (created on first write, like the Python locked()).
 func WithLock(path string, fn func(*Tx) error) error {
