@@ -80,7 +80,7 @@ Cask только darwin (в одном cask нельзя объявить `awg-
 ## Бэклог
 
 - **CI (сделано):** GitHub Actions — `test` (gofmt/vet/go test) + `parity` (26 шагов против Python-репо) на push/PR; `release.yml` — goreleaser по тегу `v*`.
-- **README Tier-3 переводы** (ko, fr, hi, id, uk) одним проходом под релиз amnezia-mesh-go, с синхронизацией всего существующего набора (из мастер-плана).
+- **README Tier-3 переводы (сделано, python 38fcfe5):** ko, fr, hi, id, uk добавлены, весь существующий набор (8 шт.) синхронизирован под актуальный английский текст (из мастер-плана).
 - **bulk rename auto-generated имён (сделано, python 51a83b6 / go — этот коммит):** `peer rename` принимает несколько old/new пар разом; валидация all-or-nothing, свопы поддержаны, один render + один SIGHUP.
 - **peer rotate (сделано, из плана панели):** ротация keypair+PSK пира (IP/имя прежние), restart-путь как у revoke; девайс переимпортирует профиль.
 - **Свои DNS-записи (сделано, из плана панели):** `dns add|remove|list` поверх `<name>.<domain>`; config/custom.hosts как второй addn-hosts, SIGHUP вместо рестарта.
