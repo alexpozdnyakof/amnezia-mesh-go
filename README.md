@@ -67,6 +67,9 @@ awg-mesh peer add laptop     # → vpn:// profiles + .conf for the Amnezia app
 awg-mesh peer rename laptop laptop2 old-phone phone  # several pairs at once
 awg-mesh peer rotate laptop2 # re-issue keys (same IP; device re-imports)
 awg-mesh dns add nas 100.64.0.50   # custom MagicDNS record, no restart
+awg-mesh mesh link add laptop2 nas # opt-in direct path (hub stays fallback)
+awg-mesh mesh endpoint set nas 203.0.113.50:51820
+awg-mesh mesh config laptop2 # → laptop2-mesh-p2p.conf / .vpn (experimental)
 awg-mesh peer list --json
 awg-mesh doctor              # post-install self-checks
 awg-mesh monitoring install  # optional: cron stats + watchdog

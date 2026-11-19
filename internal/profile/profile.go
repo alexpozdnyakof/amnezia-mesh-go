@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/envfile"
+	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/mesh"
 	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/ojson"
 )
 
@@ -107,6 +108,13 @@ func DecodeProfile(url string) (*ojson.Obj, error) {
 
 // RenderClientConf renders a WireGuard-style client config.
 func RenderClientConf(env map[string]string, peerIP, allowed, priv, psk, serverPub string) (string, error) {
+	return RenderClientConfDirect(env, peerIP, allowed, priv, psk, serverPub, nil)
+}
+
+// RenderClientConfDirect is RenderClientConf plus linked partners rendered
+// as extra [Peer] blocks after the hub: /32, no PSK (the hub PSK is a pair
+// secret with the hub and must never reach another device).
+func RenderClientConfDirect(env map[string]string, peerIP, allowed, priv, psk, serverPub string, direct []mesh.Direct) (string, error) {
 	hub, ok := env["HUB_IP"]
 	if !ok {
 		return "", fmt.Errorf("HUB_IP missing in env")
@@ -142,6 +150,16 @@ func RenderClientConf(env map[string]string, peerIP, allowed, priv, psk, serverP
 		"Endpoint = "+host+":"+port,
 		"PersistentKeepalive = "+keepalive,
 	)
+	for _, d := range direct {
+		lines = append(lines,
+			"",
+			"[Peer]",
+			"PublicKey = "+d.Pub,
+			"AllowedIPs = "+d.IP+"/32",
+			"Endpoint = "+d.Endpoint,
+			"PersistentKeepalive = "+keepalive,
+		)
+	}
 	return strings.Join(lines, "\n") + "\n", nil
 }
 
@@ -149,7 +167,13 @@ func RenderClientConf(env map[string]string, peerIP, allowed, priv, psk, serverP
 // (ptype is "exit" or "mesh"). Key order matches the Python dict insertion
 // order byte-for-byte.
 func BuildAppProfile(env map[string]string, name, ptype, peerIP, allowed, priv, pub, psk, serverPub string) (*ojson.Obj, error) {
-	conf, err := RenderClientConf(env, peerIP, allowed, priv, psk, serverPub)
+	return BuildAppProfileDirect(env, name, ptype, peerIP, allowed, priv, pub, psk, serverPub, nil)
+}
+
+// BuildAppProfileDirect is BuildAppProfile with linked partners in the
+// embedded client config.
+func BuildAppProfileDirect(env map[string]string, name, ptype, peerIP, allowed, priv, pub, psk, serverPub string, direct []mesh.Direct) (*ojson.Obj, error) {
+	conf, err := RenderClientConfDirect(env, peerIP, allowed, priv, psk, serverPub, direct)
 	if err != nil {
 		return nil, err
 	}
@@ -267,6 +291,52 @@ func GenerateProfiles(envFile, name, ip, priv, pub, psk, outPrefix string) ([]st
 			}
 			written = append(written, path)
 		}
+	}
+	return written, nil
+}
+
+// GenerateP2PProfile writes <outPrefix>-mesh-p2p.{conf,vpn}: hub (mesh /24)
+// plus linked partners. The .conf (managed mode) carries every partner with
+// a live endpoint; the .vpn (app mode, experimental) only static ones — a
+// snapshot cannot follow a moving endpoint, and a stale /32 silently
+// blackholes traffic. Returns the written paths (conf, vpn).
+func GenerateP2PProfile(envFile, name, ip, priv, pub, psk string, managed, static []mesh.Direct, outPrefix string) ([]string, error) {
+	env, err := envfile.Load(envFile)
+	if err != nil {
+		return nil, err
+	}
+	p, err := parseNetwork(env["AWG_MESH_SUBNET"])
+	if err != nil {
+		return nil, err
+	}
+	env["HUB_IP"] = p.Addr().Next().String()
+	serverPub, ok := env["SERVER_PUB"]
+	if !ok {
+		return nil, fmt.Errorf("SERVER_PUB missing in server.env")
+	}
+	allowed := env["AWG_MESH_SUBNET"]
+	conf, err := RenderClientConfDirect(env, ip, allowed, priv, psk, serverPub, managed)
+	if err != nil {
+		return nil, err
+	}
+	prof, err := BuildAppProfileDirect(env, name, "mesh-p2p", ip, allowed, priv, pub, psk, serverPub, static)
+	if err != nil {
+		return nil, err
+	}
+	vpn, err := EncodeProfile(prof)
+	if err != nil {
+		return nil, err
+	}
+	var written []string
+	for _, out := range []struct{ suffix, content string }{
+		{"mesh-p2p.conf", conf},
+		{"mesh-p2p.vpn", vpn},
+	} {
+		path := outPrefix + "-" + out.suffix
+		if err := os.WriteFile(path, []byte(out.content), 0o644); err != nil {
+			return nil, err
+		}
+		written = append(written, path)
 	}
 	return written, nil
 }

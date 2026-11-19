@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/mesh"
 	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/ojson"
 )
 
@@ -348,4 +349,36 @@ func base64Of(b []byte) string {
 	enc.Write(b)
 	enc.Close()
 	return buf.String()
+}
+
+// Byte-exact contract shared with the Python repo (copy of its golden).
+func TestP2PGolden(t *testing.T) {
+	managed := []mesh.Direct{
+		{Name: "nas", Pub: "NASPUBNASPUBNASPUBNASPUBNASPUBNASPUBNASPUB0=", IP: "100.64.0.5", Endpoint: "203.0.113.50:51820", Source: "static"},
+		{Name: "phone", Pub: "PHONEPUBPHONEPUBPHONEPUBPHONEPUBPHONEPUBP0=", IP: "100.64.0.4", Endpoint: "85.1.2.3:4000", Source: "observed"},
+	}
+	prefix := filepath.Join(t.TempDir(), "laptop")
+	written, err := GenerateP2PProfile(filepath.Join(fixturesDir, "server.env"), "laptop", "100.64.0.3",
+		strings.Repeat("A", 44), strings.Repeat("B", 44), strings.Repeat("C", 44),
+		managed, managed[:1], prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(written[0])
+	want, err := os.ReadFile(filepath.Join(fixturesDir, "golden", "laptop-mesh-p2p.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("p2p conf differs from golden:\n%s", got)
+	}
+	vpn, _ := os.ReadFile(written[1])
+	prof, err := DecodeProfile(string(vpn))
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf, _ := confFromProfile(prof)
+	if strings.Contains(conf, "85.1.2.3:4000") || !strings.Contains(conf, "203.0.113.50:51820") {
+		t.Fatal("app profile must carry static partners only")
+	}
 }

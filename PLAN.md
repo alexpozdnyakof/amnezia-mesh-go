@@ -79,7 +79,8 @@ Cask только darwin (в одном cask нельзя объявить `awg-
 
 ## Бэклог
 
-- **CI (сделано):** GitHub Actions — `test` (gofmt/vet/go test) + `parity` (26 шагов против Python-репо) на push/PR; `release.yml` — goreleaser по тегу `v*`.
+- **Эпик 4 / T1 — mesh links + p2p-профили (сделано, python 1dfca4e / go — этот коммит):** `mesh link|endpoint|config|status`, мульти-пир рендер (direct-пиры /32 без PSK), `<dev>-mesh-p2p.{conf,vpn}` (`.vpn` — static-only, experimental), хуки в peer revoke/rename/rotate, remote-sync после mesh-мутаций. Логика в `internal/mesh` (links.go), JSON-файлы байт-в-байт как `json.dump(indent=2)` (`ojson.MarshalIndent`). Golden `laptop-mesh-p2p.conf` — копия python-фикстуры. Parity 57 шагов (flow 5 + remote). Дальше T2 (collector/coord) и T3 (агент) — Python-first.
+- **CI (сделано):** GitHub Actions — `test` (gofmt/vet/go test) + `parity` (57 шагов против Python-репо) на push/PR; `release.yml` — goreleaser по тегу `v*`.
 - **README Tier-3 переводы (сделано, python 38fcfe5):** ko, fr, hi, id, uk добавлены, весь существующий набор (8 шт.) синхронизирован под актуальный английский текст (из мастер-плана).
 - **bulk rename auto-generated имён (сделано, python 51a83b6 / go — этот коммит):** `peer rename` принимает несколько old/new пар разом; валидация all-or-nothing, свопы поддержаны, один render + один SIGHUP.
 - **peer rotate (сделано, из плана панели):** ротация keypair+PSK пира (IP/имя прежние), restart-путь как у revoke; девайс переимпортирует профиль.

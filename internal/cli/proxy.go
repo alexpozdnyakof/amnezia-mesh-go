@@ -69,6 +69,14 @@ func isMutating(argv []string) bool {
 			}
 		}
 		return true
+	case "mesh":
+		if len(argv) > 2 {
+			switch argv[1] + " " + argv[2] {
+			case "link add", "link remove", "endpoint set", "endpoint unset":
+				return true
+			}
+		}
+		return len(argv) > 1 && argv[1] == "config"
 	case "peer":
 		if len(argv) > 1 {
 			switch argv[1] {

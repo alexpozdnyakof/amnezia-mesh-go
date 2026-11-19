@@ -261,3 +261,56 @@ func Equal(a, b any) bool {
 	}
 	return false
 }
+
+// MarshalIndent appends the representation of CPython's
+// json.dump(obj, f, indent=2) (ensure_ascii=True, no trailing newline):
+// items on their own lines, ", " collapsed to "," + newline, ": " between
+// key and value, empty containers as [] / {}.
+func (o *Obj) MarshalIndent(buf *bytes.Buffer) {
+	marshalIndent(o, buf, 0)
+}
+
+func marshalIndent(v any, buf *bytes.Buffer, level int) {
+	pad := func(n int) {
+		buf.WriteByte('\n')
+		for i := 0; i < n; i++ {
+			buf.WriteString("  ")
+		}
+	}
+	switch t := v.(type) {
+	case []any:
+		if len(t) == 0 {
+			buf.WriteString("[]")
+			return
+		}
+		buf.WriteByte('[')
+		for i, e := range t {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			pad(level + 1)
+			marshalIndent(e, buf, level+1)
+		}
+		pad(level)
+		buf.WriteByte(']')
+	case *Obj:
+		if len(t.keys) == 0 {
+			buf.WriteString("{}")
+			return
+		}
+		buf.WriteByte('{')
+		for i, k := range t.keys {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			pad(level + 1)
+			writePyString(buf, k)
+			buf.WriteString(": ")
+			marshalIndent(t.vals[k], buf, level+1)
+		}
+		pad(level)
+		buf.WriteByte('}')
+	default:
+		marshal(v, buf, ",", ":")
+	}
+}

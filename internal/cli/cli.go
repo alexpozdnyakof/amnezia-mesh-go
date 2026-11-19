@@ -162,6 +162,8 @@ func (c *Cli) dispatch(argv []string) (int, error) {
 		return c.cmdMonitoring(rest)
 	case "dns":
 		return c.cmdDns(rest)
+	case "mesh":
+		return c.cmdMesh(rest)
 	case "skill":
 		return c.cmdSkill(rest)
 	default:
@@ -173,7 +175,7 @@ func (c *Cli) dispatch(argv []string) (int, error) {
 
 func usage(w io.Writer) {
 	fmt.Fprintln(w, "usage: awg-mesh [--json] [--server alias] <command> [args]")
-	fmt.Fprintln(w, "commands: init, adopt, peer add|list|revoke|rename|rotate, doctor, monitoring install|uninstall, dns add|remove|list, skill [--install]")
+	fmt.Fprintln(w, "commands: init, adopt, peer add|list|revoke|rename|rotate, doctor, monitoring install|uninstall, dns add|remove|list, mesh link|endpoint|config|status, skill [--install]")
 }
 
 // say is a progress note, human mode only (stdout stays machine-readable).
@@ -793,7 +795,11 @@ func (c *Cli) cmdPeerRename(args []string) (int, error) {
 			}
 		}
 		tx.RenameMany(ops)
-		return nil
+		mapping := make(map[string]string, len(ops))
+		for _, op := range ops {
+			mapping[op[0]] = op[1]
+		}
+		return mesh.RenamePeers(r, mapping)
 	})
 	if err != nil {
 		return 0, err
@@ -877,6 +883,14 @@ func (c *Cli) cmdPeerRotate(args []string) (int, error) {
 	if _, err := profile.GenerateProfiles(envFile, name, ip, priv, pub, psk, prefix); err != nil {
 		return 0, err
 	}
+	// the pubkey changed: this device's and its partners' p2p profiles follow
+	rotParts, err := mesh.Partners(r, name)
+	if err != nil {
+		return 0, err
+	}
+	if err := c.refreshP2P(r, envFile, append([]string{name}, rotParts...)); err != nil {
+		return 0, err
+	}
 	c.out("")
 	c.out(fmt.Sprintf("peer '%s' rotated: %s (new keypair + psk)", name, ip))
 	c.out("import the new profile on the device — the old vpn:// link stops working")
@@ -916,6 +930,10 @@ func (c *Cli) cmdPeerRevoke(args []string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	former, err := mesh.PrunePeer(r, name)
+	if err != nil {
+		return 0, err
+	}
 	if _, err := render.RenderAll(r); err != nil {
 		return 0, err
 	}
@@ -928,6 +946,12 @@ func (c *Cli) cmdPeerRevoke(args []string) (int, error) {
 		os.Remove(path)
 	}
 	c.say("peer '%s' revoked", name)
+	if len(former) > 0 {
+		if err := c.refreshP2P(r, envFile, former); err != nil {
+			return 0, err
+		}
+		c.say("links dropped; re-import the p2p profile on: %s", strings.Join(former, ", "))
+	}
 	c.ok("revoked", name)
 	return 0, nil
 }

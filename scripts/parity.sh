@@ -200,6 +200,47 @@ step "$PYADOPT" "$GOADOPT" "adopt: list"   peer list --json
 # same bytes.
 step "$PYROOT" "$GROOT" "skill" skill
 
+# --- flow 5: mesh links + p2p profiles (epic 4, T1) ---------------------------
+PYMESH="$WORK/py-mesh"
+GOMESH="$WORK/go-mesh"
+mkdir -p "$PYMESH" "$GOMESH"
+mstep() { step "$PYMESH" "$GOMESH" "$@"; }
+mstep "mesh: init" init --host 198.51.100.30 --image shim-image --port 443
+mstep "mesh: peer add m-a" peer add m-a
+mstep "mesh: peer add m-b" peer add m-b
+mstep "mesh: peer add m-c" peer add m-c
+mstep "mesh: link list (empty)" mesh link list
+mstep "mesh: link add (no endpoint yet)" mesh link add m-a m-b
+mstep "mesh: link add duplicate" mesh link add m-b m-a
+mstep "mesh: link add self" mesh link add m-a m-a
+mstep "mesh: link add unknown" mesh link add m-a ghost
+mstep "mesh: status (hub-only)" mesh status
+mstep "mesh: endpoint set" mesh endpoint set m-b 203.0.113.50:0443 --note "port-forward"
+mstep "mesh: endpoint set invalid" mesh endpoint set m-b nonsense
+mstep "mesh: config" mesh config m-a
+mstep "mesh: config (no links)" mesh config m-c
+mstep "mesh: link add 2nd" mesh link add m-a m-c
+# observed snapshot written by the "collector": m-c reachable
+NOW_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+for d in "$PYMESH" "$GOMESH"; do
+  printf '{"version":1,"updated":"%s","peers":[{"name":"m-c","pub":"x","endpoint":"85.1.2.3:4000","handshake_age":20,"observed_at":"%s"},{"name":"m-b","pub":"y","endpoint":"9.9.9.9:9","handshake_age":9999}]}\n' \
+    "$NOW_TS" "$NOW_TS" >"$d/config/mesh-endpoints.json"
+done
+mstep "mesh: endpoint list --json" mesh endpoint list --json
+mstep "mesh: endpoint list" mesh endpoint list
+mstep "mesh: status --json" mesh status --json
+mstep "mesh: config --json" mesh config m-a --json
+mstep "mesh: link list --json" mesh link list --json
+mstep "mesh: peer rename rewrites links" peer rename m-b m-nas
+mstep "mesh: link list after rename" mesh link list
+mstep "mesh: peer rotate refreshes p2p" peer rotate m-nas
+mstep "mesh: endpoint unset" mesh endpoint unset m-nas
+mstep "mesh: endpoint unset (absent)" mesh endpoint unset m-nas
+mstep "mesh: link remove" mesh link remove m-a m-c
+mstep "mesh: link remove (absent)" mesh link remove m-a m-c
+mstep "mesh: peer revoke prunes links" peer revoke m-nas
+mstep "mesh: link list --json (after revoke)" mesh link list --json
+
 # --- flow 4: remote mode (stage 7, thin ssh proxy) ---------------------------
 # AWG_MESH_SSH puts both CLIs into proxy mode; the ssh/scp shims answer
 # deterministically. Mutating commands must pull config/peers/ back (scp
@@ -225,6 +266,10 @@ step "$PYREMOTE" "$GOREMOTE" "remote: revoke failure keeps rc, no sync" \
   peer revoke parity-phone --json
 step "$PYREMOTE" "$GOREMOTE" "remote: --server flag" \
   --server other-vps peer list --json
+step "$PYREMOTE" "$GOREMOTE" "remote: mesh link add syncs config/peers" \
+  mesh link add m-a m-b --json
+step "$PYREMOTE" "$GOREMOTE" "remote: mesh link list is read-only" \
+  mesh link list --json
 step "$PYREMOTE" "$GOREMOTE" "remote: skill stays local" skill
 step "$PYREMOTE" "$GOREMOTE" "remote: --version stays local" --version
 
