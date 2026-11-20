@@ -684,7 +684,7 @@ func (c *Cli) cmdPeerAdd(args []string) (int, error) {
 	if _, err := render.RenderAll(r); err != nil {
 		return 0, err
 	}
-	if err := c.applyAdd(r, env, peers.Peer{Name: name, IP: ip, Pub: pub}); err != nil {
+	if err := c.applyAdd(r, env, peers.Peer{Name: name, IP: ip, Pub: pub, PSK: psk}); err != nil {
 		return 0, err
 	}
 
@@ -1085,9 +1085,12 @@ func runCmd(name string, args ...string) (string, string, int) {
 // userspace syncconf wedge cannot occur), and SIGHUP makes dnsmasq re-read
 // peers.hosts for the new MagicDNS record.
 func (c *Cli) applyAdd(r string, env map[string]string, p peers.Peer) error {
-	c.ComposeRun(r, env, "",
+	// The PSK goes through stdin (never argv); without it the new peer's
+	// handshakes fail until the hub restarts.
+	c.ComposeRun(r, env, p.PSK+"\n",
 		"exec", "-T", "awg", "awg", "set", "awg0",
-		"peer", p.Pub, "allowed-ips", p.IP+"/32")
+		"peer", p.Pub, "preshared-key", "/dev/stdin",
+		"allowed-ips", p.IP+"/32")
 	c.say("applied via awg set")
 	c.reloadDNS(r, env)
 	c.say("dns records reloaded")

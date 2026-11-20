@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/compose"
 	"github.com/alexpozdnyakof/amnezia-mesh-go/internal/peers"
 )
 
@@ -350,5 +351,31 @@ func TestDnsAddDuplicate(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "record already exists: nas.awg") {
 		t.Fatalf("stderr: %s", stderr.String())
+	}
+}
+
+// Regression: restart-free add used to omit the PSK, so the new peer could
+// not handshake until the hub restarted. The PSK must reach `awg set` via
+// stdin, never argv.
+func TestPeerAddAppliesPSKViaStdin(t *testing.T) {
+	_, c, _ := opsMesh(t, "")
+	var gotStdin string
+	var gotArgs []string
+	inner := c.ComposeRun
+	c.ComposeRun = func(root string, env map[string]string, stdin string, args ...string) compose.Result {
+		if strings.Contains(strings.Join(args, " "), "preshared-key") {
+			gotStdin, gotArgs = stdin, args
+		}
+		return inner(root, env, stdin, args...)
+	}
+	if code := c.Run([]string{"peer", "add", "fresh"}); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	joined := strings.Join(gotArgs, " ")
+	if !strings.Contains(joined, "preshared-key /dev/stdin") || !strings.Contains(joined, "allowed-ips") {
+		t.Fatalf("awg set args: %v", gotArgs)
+	}
+	if gotStdin != "FAKEPSK000000000000000000000000000000000000000C=\n" || strings.Contains(joined, "FAKEPSK") {
+		t.Fatalf("psk must travel via stdin only: stdin=%q args=%v", gotStdin, gotArgs)
 	}
 }
